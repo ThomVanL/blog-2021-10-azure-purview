@@ -1,0 +1,699 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "purviewAccountName": {
+            "defaultValue": "azpurviewacc",
+            "metadata": {
+                "description": "Base name of the Purview account."
+            },
+            "type": "String"
+        },
+        "keyVaultName": {
+            "defaultValue": "azpurviewkv",
+            "metadata": {
+                "description": "Base name of the Key Vault."
+            },
+            "maxLength": 11,
+            "type": "String"
+        },
+        "storageAccountName": {
+            "defaultValue": "azpurviewsa",
+            "metadata": {
+                "description": "Base name of the Data Lake Gen 2 Storage Account."
+            },
+            "maxLength": 11,
+            "type": "String"
+        },
+        "azureSqlServerName": {
+            "defaultValue": "azpurviewsqlserver",
+            "metadata": {
+                "description": "Base name of the Azure SQL Server."
+            },
+            "type": "String"
+        },
+        "cosmosDbAccountName": {
+            "defaultValue": "azpurviewcdba",
+            "metadata": {
+                "description": "Base name of the Azure CosmosDB Account."
+            },
+            "type": "String"
+        },
+        "dataFactoryName": {
+            "defaultValue": "azpurviewadf",
+            "metadata": {
+                "description": "Base name of the Azure Data Factory."
+            },
+            "type": "String"
+        }
+    },
+    "variables": {
+
+        "uniquePurviewAccountName": "[concat(parameters('purviewAccountName'),uniqueString(resourceGroup().id))]",
+        "uniqueKeyVaultName": "[concat(parameters('keyVaultName'),uniqueString(resourceGroup().id))]",
+        "uniqueStorageAccountName": "[concat(parameters('storageAccountName'),uniqueString(resourceGroup().id))]",
+        "uniqueAzureSqlServerName": "[concat(parameters('azureSqlServerName'),uniqueString(resourceGroup().id))]",
+        "uniqueCosmosDbAccountName": "[concat(parameters('cosmosDbAccountName'),uniqueString(resourceGroup().id))]",
+        "uniqueDataFactoryName": "[concat(parameters('dataFactoryName'),uniqueString(resourceGroup().id))]",
+
+        "storageAccountAdventureWorksBlobContainerName": "/default/adventureworks",
+
+        "cosmosDbAccountSqlDatabaseName": "[concat(variables('uniqueCosmosDbAccountName'), '/cosmic-works')]",
+        "cosmosDbAccountSqlDatabaseContainerName": "[concat(variables('cosmosDbAccountSqlDatabaseName'), '/product')]",
+
+        "keyVaultSecretCosmosDbAccountKeyName": "[concat(variables('uniqueKeyVaultName'), '/cdba-key')]",
+        "keyVaultSecretAzureSqlServerPasswordName": "[concat(variables('uniqueKeyVaultName'), '/sql-server-admin-pass')]",
+        "keyVaultSecretStorageAccountKeyName": "[concat(variables('uniqueKeyVaultName'), '/sa-key')]",
+
+        "azureSqlServerAdminLogin": "[concat('sql', uniqueString(resourceGroup().id))]",
+        "azureSqlServerAdminPassword": "[concat('pasz', uniqueString(resourceGroup().id), '!', '$', '6')]",
+
+        "dataFactoryId": "[concat('Microsoft.DataFactory/factories/', variables('uniqueDataFactoryName'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Purview/accounts",
+            "apiVersion": "2020-12-01-preview",
+            "name": "[variables('uniquePurviewAccountName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "networkAcls": {
+                    "defaultAction": "Allow"
+                }
+            },
+            "sku": {
+                "name": "Standard",
+                "capacity": "1"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2021-04-01",
+            "name": "[variables('uniqueStorageAccountName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard_LRS",
+                "tier": "Standard"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "allowCrossTenantReplication": false,
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": true,
+                "allowSharedKeyAccess": true,
+                "isHnsEnabled": true,
+                "supportsHttpsTrafficOnly": true,
+                "accessTier": "Hot"
+            },
+            "resources": [
+                {
+                    "type": "blobServices/containers",
+                    "apiVersion": "2021-04-01",
+                    "name": "[variables('storageAccountAdventureWorksBlobContainerName')]",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('uniqueStorageAccountName'))]"
+                    ],
+                    "properties": {
+                        "publicAccess": "None"
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts",
+            "apiVersion": "2021-06-15",
+            "name": "[variables('uniqueCosmosDbAccountName')]",
+            "location": "West Europe",
+            "tags": {
+                "defaultExperience": "Core (SQL)",
+                "hidden-cosmos-mmspecial": ""
+            },
+            "kind": "GlobalDocumentDB",
+            "identity": {
+                "type": "None"
+            },
+            "properties": {
+                "publicNetworkAccess": "Enabled",
+                "enableAutomaticFailover": false,
+                "enableMultipleWriteLocations": false,
+                "isVirtualNetworkFilterEnabled": false,
+                "virtualNetworkRules": [],
+                "disableKeyBasedMetadataWriteAccess": false,
+                "enableFreeTier": false,
+                "enableAnalyticalStorage": false,
+                "analyticalStorageConfiguration": {
+                    "schemaType": "WellDefined"
+                },
+                "databaseAccountOfferType": "Standard",
+                "defaultIdentity": "FirstPartyIdentity",
+                "networkAclBypass": "None",
+                "disableLocalAuth": false,
+                "consistencyPolicy": {
+                    "defaultConsistencyLevel": "Session",
+                    "maxIntervalInSeconds": 5,
+                    "maxStalenessPrefix": 100
+                },
+                "locations": [
+                    {
+                        "locationName": "West Europe",
+                        "provisioningState": "Succeeded",
+                        "failoverPriority": 0,
+                        "isZoneRedundant": false
+                    }
+                ],
+                "cors": [],
+                "capabilities": [
+                    {
+                        "name": "EnableServerless"
+                    }
+                ],
+                "ipRules": [],
+                "backupPolicy": {
+                    "type": "Periodic",
+                    "periodicModeProperties": {
+                        "backupIntervalInMinutes": 240,
+                        "backupRetentionIntervalInHours": 8
+                    }
+                },
+                "networkAclBypassResourceIds": []
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+            "apiVersion": "2021-06-15",
+            "name": "[variables('cosmosDbAccountSqlDatabaseName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('uniqueCosmosDbAccountName'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "[last(split(variables('cosmosDbAccountSqlDatabaseName'), '/'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2021-06-15",
+            "name": "[variables('cosmosDbAccountSqlDatabaseContainerName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('uniqueCosmosDbAccountName'), last(split(variables('cosmosDbAccountSqlDatabaseName'),'/')))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "product",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/id"
+                        ],
+                        "kind": "Hash"
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": []
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Sql/servers",
+            "apiVersion": "2021-02-01-preview",
+            "name": "[variables('uniqueAzureSqlServerName')]",
+            "location": "westeurope",
+            "kind": "v12.0",
+            "properties": {
+                "administratorLogin": "[variables('azureSqlServerAdminLogin')]",
+                "administratorLoginPassword": "[variables('azureSqlServerAdminPassword')]",
+                "publicNetworkAccess": "Enabled",
+                "restrictOutboundNetworkAccess": "Disabled"
+            },
+            "resources": [
+                {
+                    "type": "databases",
+                    "apiVersion": "2021-02-01-preview",
+                    "name": "adventureworkslt",
+                    "location": "[resourceGroup().location]",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('uniqueAzureSqlServerName'))]"
+                    ],
+                    "sku": {
+                        "name": "GP_S_Gen5",
+                        "tier": "GeneralPurpose",
+                        "family": "Gen5",
+                        "capacity": 2
+                    },
+                    "properties": {
+                        "collation": "SQL_Latin1_General_CP1_CI_AS",
+                        "catalogCollation": "SQL_Latin1_General_CP1_CI_AS",
+                        "zoneRedundant": false,
+                        "readScale": "Disabled",
+                        "autoPauseDelay": 60,
+                        "requestedBackupStorageRedundancy": "Local",
+                        "minCapacity": 0.5,
+                        "isLedgerOn": false,
+                        "sampleName": "AdventureWorksLT"
+                    }
+                },
+                {
+                    "type": "firewallRules",
+                    "apiVersion": "2021-02-01-preview",
+                    "name": "AllowAllWindowsAzureIps",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('uniqueAzureSqlServerName'))]"
+                    ],
+                    "properties": {
+                        "startIpAddress": "0.0.0.0",
+                        "endIpAddress": "0.0.0.0"
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults",
+            "apiVersion": "2019-09-01",
+            "name": "[variables('uniqueKeyVaultName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[variables('uniqueStorageAccountName')]",
+                "[variables('uniqueAzureSqlServerName')]",
+                "[variables('uniqueCosmosDbAccountName')]",
+                "[variables('uniqueDataFactoryName')]"
+            ],
+            "properties": {
+                "sku": {
+                    "family": "A",
+                    "name": "Standard"
+                },
+                "tenantId": "[subscription().tenantId]",
+                "accessPolicies": [
+                    {
+                        "tenantId": "[subscription().tenantId]",
+                        "objectId": "[reference(resourceId('Microsoft.Purview/accounts', variables('uniquePurviewAccountName')), '2020-12-01-preview', 'full').identity.principalId]",
+                        "permissions": {
+                            "keys": [
+                                "Get",
+                                "List"
+                            ],
+                            "secrets": [
+                                "List",
+                                "Get"
+                            ],
+                            "certificates": [
+                                "Get",
+                                "List"
+                            ]
+                        }
+                    },
+                    {
+                        "tenantId": "[subscription().tenantId]",
+                        "objectId": "[reference(resourceId('Microsoft.DataFactory/factories', variables('uniqueDataFactoryName')), '2018-06-01', 'full').identity.principalId]",
+                        "permissions": {
+                            "keys": [
+                                "Get",
+                                "List"
+                            ],
+                            "secrets": [
+                                "List",
+                                "Get"
+                            ],
+                            "certificates": [
+                                "Get",
+                                "List"
+                            ]
+                        }
+                    }
+                ],
+                "networkAcls": {
+                    "defaultAction": "Allow",
+                    "bypass": "AzureServices"
+                },
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 7,
+                "enableRbacAuthorization": false
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2019-09-01",
+            "name": "[variables('keyVaultSecretCosmosDbAccountKeyName')]",
+            "location": "westeurope",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('uniqueKeyVaultName'))]"
+            ],
+            "properties": {
+                "value": "[listKeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('uniqueCosmosDbAccountName')), '2021-06-15').primaryReadonlyMasterKey]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2019-09-01",
+            "name": "[variables('keyVaultSecretAzureSqlServerPasswordName')]",
+            "location": "westeurope",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('uniqueKeyVaultName'))]"
+            ],
+            "properties": {
+                "value": "[variables('azureSqlServerAdminPassword')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2019-09-01",
+            "name": "[variables('keyVaultSecretStorageAccountKeyName')]",
+            "location": "westeurope",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('uniqueKeyVaultName'))]"
+            ],
+            "properties": {
+                "value": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('uniqueStorageAccountName')), '2021-04-01').keys[0].value]"
+            }
+        },
+        {
+            "name": "[variables('uniqueDataFactoryName')]",
+            "type": "Microsoft.DataFactory/factories",
+            "apiVersion": "2018-06-01",
+            "properties": {},
+            "dependsOn": [],
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            }
+        },
+        {
+            "name": "[concat(variables('uniqueDataFactoryName'), '/ls_kv')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureKeyVault",
+                "typeProperties": {
+                    "baseUrl": "[reference(resourceId('Microsoft.KeyVault/vaults', variables('uniqueKeyVaultName')),'2019-09-01','Full').properties.vaultUri]"
+                }
+            },
+            "dependsOn": [
+                "[variables('uniqueKeyVaultName')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('uniqueDataFactoryName'), '/ls_sql_adventureworkslt')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureSqlDatabase",
+                "typeProperties": {
+                    "connectionString": "[format('Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source={0};Initial Catalog={1};User ID={2}',reference(variables('uniqueAzureSqlServerName'),'2021-02-01-preview', 'Full').properties.fullyQualifiedDomainName, 'adventureworkslt',reference(variables('uniqueAzureSqlServerName'),'2021-02-01-preview', 'Full').properties.administratorLogin)]",
+                    "password": {
+                        "type": "AzureKeyVaultSecret",
+                        "store": {
+                            "referenceName": "ls_kv",
+                            "type": "LinkedServiceReference"
+                        },
+                        "secretName": "[last(split(variables('keyVaultSecretAzureSqlServerPasswordName'), '/'))]"
+                    }
+                }
+            },
+            "dependsOn": [
+                "[concat(variables('dataFactoryId'), '/linkedServices/ls_kv')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('uniqueDataFactoryName'), '/ls_azpurviewtvlsa')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureBlobFS",
+                "typeProperties": {
+                    "url": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('uniqueStorageAccountName')),'2021-04-01','Full').properties.primaryEndpoints.dfs]",
+                    "accountKey": {
+                        "type": "AzureKeyVaultSecret",
+                        "store": {
+                            "referenceName": "ls_kv",
+                            "type": "LinkedServiceReference"
+                        },
+                        "secretName": "[last(split(variables('keyVaultSecretStorageAccountKeyName'), '/'))]"
+                    }
+                }
+            },
+            "dependsOn": [
+                "[concat(variables('dataFactoryId'), '/linkedServices/ls_kv')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('uniqueDataFactoryName'), '/ds_dl_adventureworks_csv')]",
+            "type": "Microsoft.DataFactory/factories/datasets",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "linkedServiceName": {
+                    "referenceName": "ls_azpurviewtvlsa",
+                    "type": "LinkedServiceReference"
+                },
+                "parameters": {
+                    "TableName": {
+                        "type": "string"
+                    },
+                    "SchemaName": {
+                        "type": "string"
+                    }
+                },
+                "annotations": [],
+                "type": "DelimitedText",
+                "typeProperties": {
+                    "location": {
+                        "type": "AzureBlobFSLocation",
+                        "fileName": {
+                            "value": "[@{dataset().SchemaName}].[@{dataset().TableName}].csv",
+                            "type": "Expression"
+                        },
+                        "folderPath": "export",
+                        "fileSystem": "adventureworks"
+                    },
+                    "columnDelimiter": ",",
+                    "escapeChar": "\\",
+                    "firstRowAsHeader": true,
+                    "quoteChar": "\""
+                },
+                "schema": []
+            },
+            "dependsOn": [
+                "[concat(variables('dataFactoryId'), '/linkedServices/ls_azpurviewtvlsa')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('uniqueDataFactoryName'), '/ds_sql_adventureworks')]",
+            "type": "Microsoft.DataFactory/factories/datasets",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_adventureworkslt",
+                    "type": "LinkedServiceReference"
+                },
+                "parameters": {
+                    "SchemaName": {
+                        "type": "string"
+                    },
+                    "TableName": {
+                        "type": "string"
+                    }
+                },
+                "annotations": [],
+                "type": "AzureSqlTable",
+                "schema": [],
+                "typeProperties": {
+                    "schema": {
+                        "value": "@dataset().SchemaName",
+                        "type": "Expression"
+                    },
+                    "table": {
+                        "value": "@dataset().TableName",
+                        "type": "Expression"
+                    }
+                }
+            },
+            "dependsOn": [
+                "[concat(variables('dataFactoryId'), '/linkedServices/ls_sql_adventureworkslt')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('uniqueDataFactoryName'), '/ds_sql_adventureworks_list')]",
+            "type": "Microsoft.DataFactory/factories/datasets",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_adventureworkslt",
+                    "type": "LinkedServiceReference"
+                },
+                "annotations": [],
+                "type": "AzureSqlTable",
+                "schema": [],
+                "typeProperties": {}
+            },
+            "dependsOn": [
+                "[concat(variables('dataFactoryId'), '/linkedServices/ls_sql_adventureworkslt')]",
+                "[variables('uniqueKeyVaultName')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('uniqueDataFactoryName'), '/Export Azure SQL AdventureWorksLT')]",
+            "type": "Microsoft.DataFactory/factories/pipelines",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "activities": [
+                    {
+                        "name": "Retrieve schema table names",
+                        "type": "Lookup",
+                        "dependsOn": [],
+                        "policy": {
+                            "timeout": "00:10:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "source": {
+                                "type": "AzureSqlSource",
+                                "sqlReaderQuery": "SELECT SCHEMA_NAME(schema_id) as SchemaName, name AS TableName\nFROM sys.tables",
+                                "queryTimeout": "00:02:00",
+                                "partitionOption": "None"
+                            },
+                            "dataset": {
+                                "referenceName": "ds_sql_adventureworks_list",
+                                "type": "DatasetReference",
+                                "parameters": {}
+                            },
+                            "firstRowOnly": false
+                        }
+                    },
+                    {
+                        "name": "For each schema table name",
+                        "type": "ForEach",
+                        "dependsOn": [
+                            {
+                                "activity": "Retrieve schema table names",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "userProperties": [],
+                        "typeProperties": {
+                            "items": {
+                                "value": "@activity('Retrieve schema table names').output.value",
+                                "type": "Expression"
+                            },
+                            "activities": [
+                                {
+                                    "name": "Copy data to Azure Data Lake",
+                                    "type": "Copy",
+                                    "dependsOn": [],
+                                    "policy": {
+                                        "timeout": "00:5:00",
+                                        "retry": 0,
+                                        "retryIntervalInSeconds": 30,
+                                        "secureOutput": false,
+                                        "secureInput": false
+                                    },
+                                    "userProperties": [],
+                                    "typeProperties": {
+                                        "source": {
+                                            "type": "AzureSqlSource",
+                                            "queryTimeout": "00:05:00",
+                                            "partitionOption": "None"
+                                        },
+                                        "sink": {
+                                            "type": "DelimitedTextSink",
+                                            "storeSettings": {
+                                                "type": "AzureBlobFSWriteSettings"
+                                            },
+                                            "formatSettings": {
+                                                "type": "DelimitedTextWriteSettings",
+                                                "quoteAllText": true,
+                                                "fileExtension": ".txt"
+                                            }
+                                        },
+                                        "enableStaging": false,
+                                        "parallelCopies": 10,
+                                        "dataIntegrationUnits": 2,
+                                        "translator": {
+                                            "type": "TabularTranslator",
+                                            "typeConversion": true,
+                                            "typeConversionSettings": {
+                                                "allowDataTruncation": true,
+                                                "treatBooleanAsNumber": false
+                                            }
+                                        }
+                                    },
+                                    "inputs": [
+                                        {
+                                            "referenceName": "ds_sql_adventureworks",
+                                            "type": "DatasetReference",
+                                            "parameters": {
+                                                "SchemaName": {
+                                                    "value": "@item().SchemaName",
+                                                    "type": "Expression"
+                                                },
+                                                "TableName": {
+                                                    "value": "@item().TableName",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "outputs": [
+                                        {
+                                            "referenceName": "ds_dl_adventureworks_csv",
+                                            "type": "DatasetReference",
+                                            "parameters": {
+                                                "TableName": {
+                                                    "value": "@item().TableName",
+                                                    "type": "Expression"
+                                                },
+                                                "SchemaName": {
+                                                    "value": "@item().SchemaName",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "policy": {
+                    "elapsedTimeMetric": {},
+                    "cancelAfter": {}
+                },
+                "annotations": [],
+                "lastPublishTime": "2021-10-08T12:03:24Z"
+            },
+            "dependsOn": [
+                "[concat(variables('dataFactoryId'), '/datasets/ds_sql_adventureworks_list')]",
+                "[concat(variables('dataFactoryId'), '/datasets/ds_sql_adventureworks')]",
+                "[concat(variables('dataFactoryId'), '/datasets/ds_dl_adventureworks_csv')]"
+            ]
+        }
+    ]
+}
